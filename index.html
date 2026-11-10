@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>채팅 로그 백업기</title>
+<style>
+:root{color-scheme:light;--ink:#20252b;--muted:#667085;--line:#d8dee8;--panel:#fff;--page:#f4f6f9;--accent:#315d8a}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;line-height:1.5}
+header{background:#23364d;color:white;padding:22px max(18px,calc((100% - 1120px)/2))}header h1{font-size:23px;margin:0 0 5px}header p{margin:0;color:#d7e2ef;font-size:14px}
+main{max-width:1120px;margin:22px auto;padding:0 16px;display:grid;grid-template-columns:minmax(320px,430px) minmax(0,1fr);gap:18px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 3px 12px #16263b0a;min-width:0}
+h2{font-size:17px;margin:0 0 14px}h3{font-size:15px;margin:18px 0 10px}
+label{display:block;font-size:13px;font-weight:650;margin:10px 0 5px}input,textarea,select,button{font:inherit}input[type=text],input[type=url],textarea{width:100%;border:1px solid #c9d2df;border-radius:8px;padding:9px 10px;background:white;color:#20252b}input[type=color]{width:48px;height:36px;padding:2px;border:1px solid var(--line);border-radius:7px;background:white}input[type=file]{max-width:100%;font-size:12px}textarea{resize:vertical;min-height:100px}input:focus,textarea:focus{outline:2px solid #8ab4df;outline-offset:1px}
+.char-card{border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0}.char-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.char-head strong{font-size:14px}.fields-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}.hint{font-size:12px;color:var(--muted);margin:6px 0}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}button{border:1px solid #c6cfdb;background:white;color:#26374a;border-radius:8px;padding:8px 11px;cursor:pointer;font-size:13px}button.primary{background:var(--accent);border-color:var(--accent);color:white}button.danger{color:#a52b2b}button:disabled{opacity:.5;cursor:not-allowed}
+#chatPreview{min-height:260px;background:#fff;border:1px dashed #c6cfdb;border-radius:10px;padding:18px;overflow-wrap:anywhere}.chat-row{display:flex;align-items:flex-start;flex-direction:row;gap:10px;margin-bottom:12px}.chat-row.right{flex-direction:row-reverse}.avatar{width:40px;height:40px;flex:0 0 40px;border-radius:50%;object-fit:cover;background:#e8edf3}.message-wrap{max-width:min(82%,420px);min-width:0}.speaker{font-size:12px;color:#666;margin-bottom:3px}.chat-row.right .speaker{text-align:right}.chat-bubble{position:relative;padding:10px 15px;border-radius:10px;box-shadow:0 1px 3px #0002;white-space:pre-wrap;overflow-wrap:anywhere}.chat-bubble.left:after{content:"";position:absolute;left:-9.5px;top:8px;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:10px solid var(--bubble-bg)}.chat-bubble.right:after{content:"";position:absolute;right:-9.5px;top:8px;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:10px solid var(--bubble-bg)}.chat-bubble.no-tail:after{content:none!important;display:none!important}
+.preview-tools{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.preview-tools h2{margin:0}.status{font-size:12px;color:var(--muted);min-height:18px}.output{width:100%;min-height:170px;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;overflow:auto}.section-note{font-size:12px;color:var(--muted)}.sticky{position:sticky;top:12px}
+@media(max-width:850px){main{grid-template-columns:1fr}.sticky{position:static}}
+</style>
+</head>
+<body>
+<header><h1>채팅 로그 백업기</h1><p>캐릭터와 대사를 입력하면 말풍선 미리보기와 HTML 코드를 생성합니다.</p></header>
+<main>
+<section class="panel">
+<h2>1. 캐릭터 설정</h2>
+<p class="hint">A는 왼쪽, B는 오른쪽, C와 그 이후 캐릭터는 모두 왼쪽에 표시됩니다.</p>
+<label for="nameColor">이름 컬러 (전 캐릭터 일괄 적용)</label><div class="fields-grid"><input type="text" id="nameColor" value="#666666" placeholder="#666666"><input type="color" id="nameColorPicker" value="#666666" aria-label="이름 컬러 선택"></div>
+<div id="characters"></div>
+<div class="actions"><button id="addChar">＋ 인원 추가</button></div>
+<h3>2. 대사 입력</h3>
+<label for="dialogue">한 줄에 한 대사씩 입력하세요. 형식: 캐릭터 이름: 대사</label>
+<textarea id="dialogue" placeholder="A: 안녕하세요.&#10;B: 반갑습니다.&#10;C: 저도 왔어요."></textarea>
+<p class="hint">캐릭터 이름은 설정에 입력한 이름과 일치해야 합니다. 같은 이름을 여러 번 사용해도 됩니다.</p>
+<div class="actions"><button type="button" id="insertDivider">구분선 삽입</button></div>
+<div class="actions">
+<button class="primary" id="generate">미리보기 및 HTML 생성</button>
+<button id="saveBackup">백업 파일 저장</button>
+<button id="loadBackup">백업 파일 불러오기</button>
+<input id="backupFile" type="file" accept="application/json,.json" hidden>
+</div>
+<div class="actions"><button id="clearDialogue" class="danger">대사 지우기</button><button id="reset">초기화</button></div>
+<p class="section-note">입력 내용은 이 브라우저의 저장 공간에도 자동 저장됩니다. 다른 기기와 동기화되지는 않으므로 JSON 백업 파일을 별도로 보관하세요.</p>
+</section>
+<section class="panel sticky">
+<div class="preview-tools"><h2>3. 미리보기</h2><span id="status" class="status" aria-live="polite"></span></div>
+<div id="chatPreview"><p class="hint">캐릭터와 대사를 입력하면 여기에 표시됩니다.</p></div>
+<h3>4. 생성된 HTML</h3>
+<p class="hint">블로그의 HTML 편집 모드 등에 붙여 넣을 수 있습니다.</p>
+<div class="actions" style="margin:0 0 9px"><button id="copyHtml" class="primary">HTML 복사</button><button id="downloadHtml">HTML 파일 저장</button></div>
+<textarea id="htmlOutput" class="output" readonly spellcheck="false" aria-label="생성된 HTML 코드"></textarea>
+</section>
+</main>
+<script>
+(() => {
+const STORE_KEY = 'chat-backup-maker-v1';
+const DEFAULT_AVATAR = 'https://i.imgur.com/Cu9F8wP.png';
+let nameColor = '#666666';
+let characters = [
+ {id:'c1',name:'A',image:DEFAULT_AVATAR,color:'#DAEAEE',side:'left'},
+ {id:'c2',name:'B',image:DEFAULT_AVATAR,color:'#D7DEE7',side:'right'}
+];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;");
+function safeUrl(value){try{const u=new URL(value,location.href);return ['http:','https:','data:'].includes(u.protocol)?u.href:''}catch{return ''}}
+function renderCharacterForm(){
+ $('characters').innerHTML = '';
+ characters.forEach((c,i)=>{
+  const card=document.createElement('div');card.className='char-card';
+  card.innerHTML=`<div class="char-head"><strong>캐릭터 ${i+1}${i===1?' · 오른쪽 정렬':' · 왼쪽 정렬'}</strong>${i>1?'<button type="button" class="danger remove-char">삭제</button>':''}</div>
+  <label>이름</label><input type="text" data-field="name" value="${esc(c.name)}" placeholder="캐릭터 이름">
+  <label>프로필 이미지 URL</label><input type="url" data-field="image" value="${esc(c.image)}" placeholder="https://...">
+  <div class="fields-grid"><div><label>말풍선 색상</label><div class="hint">색상 코드를 직접 입력할 수도 있습니다.</div></div><input type="color" data-field="color" value="${/^#[0-9a-f]{6}$/i.test(c.color)?c.color:'#DAEAEE'}" aria-label="말풍선 색상"></div>
+  <label>색상 코드</label><input type="text" data-field="colorText" value="${esc(c.color)}" placeholder="#DAEAEE">`;
+  card.querySelectorAll('[data-field]').forEach(el=>el.addEventListener('input',()=>{
+   const field=el.dataset.field;
+   if(field==='colorText') c.color=el.value;
+   else if(field==='color'){c.color=el.value;card.querySelector('[data-field="colorText"]').value=el.value;}
+   else c[field]=el.value;
+   if(field==='colorText' && /^#[0-9a-f]{6}$/i.test(el.value)) card.querySelector('[data-field="color"]').value=el.value;
+   persist();generate();
+  }));
+  const remove=card.querySelector('.remove-char');
+  if(remove) remove.addEventListener('click',()=>{characters=characters.filter(x=>x.id!==c.id);renderCharacterForm();persist();generate()});
+  $('characters').appendChild(card);
+ });
+}
+function getMessages(){
+ const byName=new Map();
+ characters.forEach(c=>{const k=c.name.trim().toLocaleLowerCase();if(k&&!byName.has(k))byName.set(k,c)});
+ let previousCharacter=null;
+ return $('dialogue').value.split(/\r?\n/).map(line=>{
+  if(line.trim()==='[구분선]') { previousCharacter=null; return {divider:true}; }
+  const continuationMatch=line.match(/^\s*(\+{1,2})(?:\s*)(.*)$/);
+  if(continuationMatch && previousCharacter) {
+   return {continuation:true,noTail:continuationMatch[1]==='++',character:previousCharacter,text:continuationMatch[2]};
+  }
+  const m=line.match(/^\s*([^:：]+)\s*[:：]\s*(.*)$/);
+  if(!m)return null;
+  const c=byName.get(m[1].trim().toLocaleLowerCase());
+  if(c) previousCharacter=c;
+  if(!c)return null;
+  const marker=m[2].match(/^(-|\+\+?)(?:\s*)(.*)$/);
+  const noTail=!!marker && (marker[1]==='-' || marker[1]==='++');
+  const text=marker?marker[2]:m[2];
+  return {character:c,text,noTail};
+ }).filter(Boolean);
+}
+function formatText(text){
+ return String(text).split(/(\*[^*]+\*)/g).map(part=>{
+  if(part.startsWith('*')&&part.endsWith('*')&&part.length>2) return '<i>'+esc(part.slice(1,-1))+'</i>';
+  return esc(part);
+ }).join('');
+}
+function bubbleHtml(c,text,continuation=false,noTail=false){
+ const side=c.side==='left'?'left':'right';
+ const img=safeUrl(c.image)||DEFAULT_AVATAR;
+ const bubbleClass=`chat-bubble ${side}${noTail?' no-tail':''}`;
+ const bubbleStyle=`--bubble-bg:${esc(c.color)};background:${esc(c.color)};padding:10px 15px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.1);max-width:300px;margin-bottom:5px;white-space:pre-wrap;overflow-wrap:anywhere;`;
+ if(continuation){
+  return `<div style="display:flex;align-items:flex-start;flex-direction:${side==='left'?'row':'row-reverse'};margin-bottom:10px;"><div style="margin-${side==='left'?'left':'right'}:50px;"><div class="${bubbleClass}" style="${bubbleStyle}">${formatText(text)}</div></div></div>`;
+ }
+ return `<div style="display:flex;align-items:flex-start;flex-direction:${side==='left'?'row':'row-reverse'};margin-bottom:10px;"><img style="width:40px;height:40px;border-radius:50%;margin-${side==='left'?'right':'left'}:10px;object-fit:cover;" src="${esc(img)}" alt="${esc(c.name)}"><div><div style="font-size:12px;color:#666666;text-align:${side==='left'?'left':'right'};margin-bottom:3px;">${esc(c.name)}</div><div class="${bubbleClass}" style="${bubbleStyle}">${formatText(text)}</div></div></div>`;
+}
+function generate(){
+ const messages=getMessages();
+ const renderMessage=m=>m.divider?'<p style="text-align: justify;" data-ke-size="size16">&nbsp;</p>\n<p style="text-align: justify;" data-ke-size="size16">&nbsp;</p>\n<hr contenteditable="false" data-ke-type="horizontalRule" data-ke-style="style6" />\n<p style="text-align: justify;" data-ke-size="size16">&nbsp;</p>\n<p style="text-align: justify;" data-ke-size="size16">&nbsp;</p>':bubbleHtml(m.character,m.text,!!m.continuation,!!m.noTail);
+ $('chatPreview').innerHTML=messages.length?messages.map(renderMessage).join(''):'<p class="hint">표시할 대사가 없습니다. “이름: 대사” 형식인지, 이름이 캐릭터 설정과 일치하는지 확인하세요.</p>';
+ const css=`<div>
+<style>
+/* 공통 말풍선 */
+.chat-bubble {
+  position: relative;
+  background: var(--bubble-bg);
+}
+
+/* 왼쪽 말풍선 꼬리 */
+.chat-bubble.left::after {
+  content: "";
+  position: absolute;
+  left: -9.5px;
+  top: 8px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 10px solid var(--bubble-bg);
+}
+
+/* 오른쪽 말풍선 꼬리 */
+.chat-bubble.right::after {
+  content: "";
+  position: absolute;
+  right: -9.5px;
+  top: 8px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 10px solid var(--bubble-bg);
+}
+
+/* 꼬리 생략 기호 */
+.chat-bubble.no-tail::after {
+  content: none !important;
+  display: none !important;
+}
+</style>
+</div>`;
+ $('htmlOutput').value=css+'\n'+messages.map(renderMessage).join('\n');
+ const parsedLines=$('dialogue').value.split(/\r?\n/).filter(x=>x.trim()).length;
+ $('status').textContent=messages.length+(messages.length===1?'개 대사 생성':'개 대사 생성')+(parsedLines>messages.length?` · 확인 필요 ${parsedLines-messages.length}줄`: '');
+}
+function state(){return {version:1,characters,nameColor,dialogue:$('dialogue').value}}
+function persist(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state()));$('status').textContent='브라우저에 자동 저장됨';}catch(e){$('status').textContent='자동 저장 실패: 백업 파일을 저장하세요.'}}
+function loadState(data){
+ if(!data||!Array.isArray(data.characters)||typeof data.dialogue!=='string')throw new Error('백업 파일 형식이 올바르지 않습니다.');
+ characters=data.characters.map((c,i)=>({id:String(c.id||`c${i+1}`),name:String(c.name||''),image:String(c.image||''),color:/^#[0-9a-f]{6}$/i.test(c.color)?c.color:'#DAEAEE',side:i===1?'right':'left'}));
+ if(characters.length<2){while(characters.length<2)characters.push({id:'c'+(characters.length+1),name:characters.length?'B':'A',image:DEFAULT_AVATAR,color:'#D7DEE7',side:characters.length?'right':'left'})}
+ nameColor=/^#[0-9a-f]{6}$/i.test(data.nameColor||'')?data.nameColor:'#666666';$('nameColor').value=nameColor;$('nameColorPicker').value=nameColor;
+ $('dialogue').value=data.dialogue;renderCharacterForm();generate();persist();
+}
+$('addChar').addEventListener('click',()=>{
+ const n=characters.length+1;
+ characters.push({id:'c'+Date.now()+Math.random().toString(16).slice(2,6),name:'캐릭터 '+n,image:DEFAULT_AVATAR,color:'#E4E0F2',side:'left'});
+ renderCharacterForm();persist();generate();
+});
+function setNameColor(value){
+ nameColor=value;
+ $('nameColor').value=value;
+ if(/^#[0-9a-f]{6}$/i.test(value)) $('nameColorPicker').value=value;
+ persist();generate();
+}
+$('nameColor').addEventListener('input',e=>setNameColor(e.target.value));
+$('nameColorPicker').addEventListener('input',e=>setNameColor(e.target.value));
+$('insertDivider').addEventListener('click',()=>{
+ const area=$('dialogue'), marker='[구분선]';
+ const start=area.selectionStart,end=area.selectionEnd;
+ const before=area.value.slice(0,start),after=area.value.slice(end);
+ const prefix=before && !before.endsWith('\n')?'\n':'';
+ const suffix=after && !after.startsWith('\n')?'\n':'';
+ area.value=before+prefix+marker+suffix+after;
+ const pos=(before+prefix+marker).length;
+ area.focus();area.setSelectionRange(pos,pos);persist();generate();
+});
+$('dialogue').addEventListener('input',()=>{persist();generate()});
+$('generate').addEventListener('click',()=>{generate();$('status').textContent='HTML을 생성했습니다.'});
+$('copyHtml').addEventListener('click',async()=>{
+ try{await navigator.clipboard.writeText($('htmlOutput').value);$('status').textContent='HTML을 복사했습니다.'}
+ catch{$('htmlOutput').focus();$('htmlOutput').select();try{document.execCommand('copy');$('status').textContent='HTML을 복사했습니다.'}catch{$('status').textContent='복사할 HTML을 선택해 복사하세요.'}}
+});
+function download(name,content,type){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url)}
+$('downloadHtml').addEventListener('click',()=>download('chat-backup.html',$('htmlOutput').value,'text/html;charset=utf-8'));
+$('saveBackup').addEventListener('click',()=>download('chat-backup.json',JSON.stringify(state(),null,2),'application/json;charset=utf-8'));
+$('loadBackup').addEventListener('click',()=>$('backupFile').click());
+$('backupFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{loadState(JSON.parse(await f.text()));$('status').textContent='백업을 불러왔습니다.'}catch(err){alert('백업을 불러오지 못했습니다. JSON 파일인지 확인하세요.')}e.target.value=''});
+$('clearDialogue').addEventListener('click',()=>{$('dialogue').value='';persist();generate()});
+$('reset').addEventListener('click',()=>{if(!confirm('캐릭터와 대사를 기본값으로 초기화할까요?'))return;characters=[{id:'c1',name:'A',image:DEFAULT_AVATAR,color:'#DAEAEE',side:'left'},{id:'c2',name:'B',image:DEFAULT_AVATAR,color:'#D7DEE7',side:'right'}];$('dialogue').value='';nameColor='#666666';$('nameColor').value=nameColor;$('nameColorPicker').value=nameColor;renderCharacterForm();persist();generate()});
+try{const saved=localStorage.getItem(STORE_KEY);if(saved)loadState(JSON.parse(saved));else{renderCharacterForm();generate()}}catch{renderCharacterForm();generate()}
+})();
+</script>
+</body>
+</html>
